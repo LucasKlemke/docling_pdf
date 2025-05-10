@@ -37,9 +37,6 @@ for i, doc in enumerate(results["documents"][0]):
     page = results["metadatas"][0][i]["page"]
     context += f"[Página {page}]: {doc}\n"
 
-# Criar o prompt para o modelo
-print("\n🔍 Contexto encontrado:" f"\n{context}")
-
 prompt = f"""Você é um assistente especializado em responder perguntas com base em documentos fornecidos.
 
 Abaixo está o contexto extraído dos documentos, com indicação das páginas de onde cada trecho foi retirado:
