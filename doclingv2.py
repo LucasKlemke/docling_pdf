@@ -15,27 +15,42 @@ CHROMA_PATH = "chroma"
 
 
 def main():
-    source = "http://portal.mec.gov.br/arquivos/pdf/texto.pdf"
+    # source = "http://portal.mec.gov.br/arquivos/pdf/texto.pdf"
+    # guyton
+    source = "https://cssjd.org.br/imagens/editor/files/2019/Abril/Tratado%20de%20Fisiologia%20M%C3%A9dica.pdf"
+
     # 1. Configurar o docling
+    print("🔧 Configurando o docling...")
     doc_converter = setup_docling()
+    print("✅ Docling configurado com sucesso!")
 
     # 2. Converter o PDF
+    print("📄 Iniciando a conversão do PDF...")
     conv_result = convert_pdf(doc_converter, source)
+    print("✅ Conversão do PDF concluída!")
 
     # 3. Extrair textos + metadados
+    print("📝 Extraindo textos e metadados...")
     df = extract_texts(conv_result)
+    print("✅ Textos e metadados extraídos!")
 
     # 4. Separar textos por página
+    print("📑 Separando textos por página...")
     chunks_df = group_texts_by_page(df)
+    print("✅ Textos separados por página!")
 
     # 5. Geração de embeddings via OpenAI
+    print("🤖 Gerando embeddings via OpenAI...")
     embeddings = get_openai_embeddings(chunks_df["text"].tolist())
+    print("✅ Embeddings gerados com sucesso!")
 
     # 6. Criar chromadb
+    print("💾 Inicializando o ChromaDB...")
     db = chromadb.PersistentClient(path="./chroma")
-    # 7. Armazenar no Chroma
-    collection = db.get_or_create_collection(name="docling_rag")
 
+    # 7. Armazenar no Chroma
+    print("📥 Armazenando chunks no ChromaDB...")
+    collection = db.get_or_create_collection(name="docling_rag")
     collection.add(
         documents=chunks_df["text"].tolist(),
         metadatas=[{"page": int(page)} for page in chunks_df["page"].tolist()],
@@ -44,7 +59,7 @@ def main():
     )
 
     print(
-        f"{len(chunks_df)} chunks armazenados com sucesso no ChromaDB com metadados de página!"
+        f"🎉 {len(chunks_df)} chunks armazenados com sucesso no ChromaDB com metadados de página!"
     )
 
 
@@ -114,17 +129,39 @@ def group_texts_by_page(df):
     return chunks_df
 
 
-# 4. Geração de embeddings via OpenAI (em lotes)
-def get_openai_embeddings(texts: list[str]) -> list[list[float]]:
-    response = openai.embeddings.create(
-        model="text-embedding-ada-002",
-        input=texts,
-    )
+import concurrent.futures
 
-    # print(response.data[0].embedding)  # acesso correto
-    return [d.embedding for d in response.data]  # acesso correto
+
+# 4. Geração de embeddings via OpenAI (em lotes e paralelo)
+def get_openai_embeddings(
+    texts: list[str], batch_size: int = 10, max_workers: int = 4
+) -> list[list[float]]:
+    """
+    Gera embeddings em lotes pequenos e executa em paralelo para evitar exceder o limite de tokens da API OpenAI.
+    """
+
+    def fetch_embeddings(batch):
+        response = openai.embeddings.create(
+            model="text-embedding-ada-002",
+            input=batch,
+        )
+        return [d.embedding for d in response.data]
+
+    all_embeddings = []
+    batches = [texts[i : i + batch_size] for i in range(0, len(texts), batch_size)]
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = list(executor.map(fetch_embeddings, batches))
+        for emb in results:
+            all_embeddings.extend(emb)
+    return all_embeddings
 
 
 # iniciar
 if __name__ == "__main__":
     main()
+
+
+# 1 pagina
+# [conteudo] / 2 chunks
+
